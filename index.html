@@ -1,0 +1,738 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Mind Maps</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: top bar, full-height map, bottom bar. A tapped node opens a sheet over the map. Expand hides everything but the map. */
+:root{
+  --bg:#eef3ef; --panel:#ffffff; --ink:#14201c; --muted:#5b6c65; --line:#cfd9d3;
+  --accent:#1d6b58; --accent-ink:#ffffff; --accent-soft:#d9ede5;
+  --root:#14201c; --root-ink:#eef3ef; --sel:#c96d12; --danger:#b3261e;
+  --display:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --text:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1613; --panel:#17221e; --ink:#e6eee9; --muted:#9bb0a7; --line:#2a3a34;
+    --accent:#5fc5a6; --accent-ink:#0e1613; --accent-soft:#1c3a31;
+    --root:#e6eee9; --root-ink:#0e1613; --sel:#f2a456; --danger:#ff8a80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1613; --panel:#17221e; --ink:#e6eee9; --muted:#9bb0a7; --line:#2a3a34;
+  --accent:#5fc5a6; --accent-ink:#0e1613; --accent-soft:#1c3a31;
+  --root:#e6eee9; --root-ink:#0e1613; --sel:#f2a456; --danger:#ff8a80; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--text);display:flex;flex-direction:column;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+
+.topbar{flex:none;background:var(--panel);border-bottom:1px solid var(--line)}
+.bar-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
+.brand{display:flex;flex-direction:column;min-width:0;flex:1 1 160px}
+.title{font:700 18px/1.2 var(--display);letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{color:var(--muted);font-size:12px;margin-top:2px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px;min-height:40px;cursor:pointer;font-weight:600;font-size:13px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.icon-btn{appearance:none;flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{border-color:var(--accent)}
+button:focus-visible,textarea:focus-visible,.node:focus-visible,.child:focus-visible{outline:3px solid var(--sel);outline-offset:2px}
+
+.paste-box{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:0 max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
+.paste-box textarea{min-width:0;height:64px;resize:vertical;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:8px 10px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.paste-box .btn{align-self:stretch;min-height:0}
+
+.stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none;cursor:grab;background:var(--bg)}
+.stage.dragging{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.world.animated{transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+.links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.link{fill:none;stroke:var(--line);stroke-width:2}
+.link.root-link{stroke:var(--accent);stroke-width:2.5}
+#nodes{position:absolute;inset:0}
+
+.node{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px 14px;border-radius:12px;background:var(--panel);border:1.5px solid var(--line);font-weight:600;font-size:13px;line-height:1.3;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 1px 2px rgba(0,0,0,.06);transition:box-shadow .15s,border-color .15s}
+.node span{overflow-wrap:anywhere;white-space:pre-line}
+.node.is-branch{border-color:var(--accent);background:var(--accent-soft)}
+.node.is-root{background:var(--root);color:var(--root-ink);border-color:var(--root);font:700 15px/1.25 var(--display);border-radius:999px;padding:10px 20px}
+.node.is-selected{border-color:var(--sel);box-shadow:0 0 0 3px color-mix(in srgb,var(--sel) 35%,transparent),0 6px 16px rgba(0,0,0,.16)}
+.node .count{position:absolute;right:-8px;top:-9px;min-width:24px;height:20px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:700 11px/20px var(--text);text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+
+.hint{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:14px;color:var(--muted);font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 12px;pointer-events:none;z-index:2}
+.edge-tab{position:absolute;left:50%;transform:translateX(-50%);z-index:4;height:28px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:600 12px/1 var(--text);cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.edge-tab.top{top:8px}
+.edge-tab.bottom{bottom:8px}
+
+.bottombar{flex:none;background:var(--panel);border-top:1px solid var(--line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.tool-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:46%;overflow:auto;background:var(--panel);border-top:1px solid var(--line);border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.12);padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));z-index:3;animation:rise .22s ease-out}
+@keyframes rise{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.sheet-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.sheet h2{margin:0;font:700 18px/1.25 var(--display);overflow-wrap:anywhere;white-space:pre-line}
+.sheet .path{color:var(--muted);font-size:12px;margin-top:4px;overflow-wrap:anywhere}
+.sheet .count-line{font-size:13px;margin:10px 0 0;color:var(--muted)}
+.close{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:18px;line-height:1}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.children{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.child{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;max-width:100%;text-align:left;overflow-wrap:anywhere}
+.child span{color:var(--accent);font-weight:700;margin-left:4px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--root);color:var(--root-ink);padding:10px 16px;border-radius:12px;font-size:13px;max-width:calc(100% - 32px);box-shadow:0 8px 20px rgba(0,0,0,.2);z-index:9;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.error{background:var(--danger);color:#fff}
+
+/* Admin upload (hidden: opens only at this page's #admin address) */
+.admin-panel{position:fixed;inset:0;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px;z-index:20}
+.admin-card{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(520px,100%);max-height:90vh;overflow:auto}
+.admin-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.admin-head h2{margin:0;font:700 18px/1.2 var(--display)}
+.admin-note{color:var(--muted);font-size:13px;margin:8px 0 0}
+.admin-stack{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.admin-stack label{font-size:13px;font-weight:600;color:var(--muted)}
+.admin-stack input,.admin-stack textarea{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);color:var(--ink);min-width:0;width:100%}
+.admin-stack textarea{min-height:120px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+.admin-row{display:flex;gap:8px}
+.admin-row input{flex:1}
+.admin-status{font-size:13px;color:var(--muted);margin-top:10px}
+.admin-status.error{color:var(--danger)}
+
+@media (prefers-reduced-motion: reduce){ .world.animated,.sheet,.node{transition:none;animation:none} }
+</style>
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="bar-row">
+    <div class="brand">
+      <span class="title" id="title">Mind maps</span>
+      <span class="meta" id="meta">Tap a node to open its branch</span>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="menu-btn" type="button" hidden>&#8592; All maps</button>
+      <button class="icon-btn" id="hide-top" type="button" aria-label="Hide top bar">&#9650;</button>
+    </div>
+  </div>
+</header>
+
+<main class="stage" id="stage" aria-label="Diagram">
+  <div class="world" id="world">
+    <svg class="links" id="links" aria-hidden="true"></svg>
+    <div id="nodes"></div>
+  </div>
+  <button class="edge-tab top" id="show-top" type="button" hidden aria-label="Show top bar">&#9660; Show top</button>
+  <button class="edge-tab bottom" id="show-bottom" type="button" hidden aria-label="Show bottom bar">&#9650; Show bottom</button>
+  <div class="hint" id="hint">Tap a node to open it</div>
+
+  <section class="sheet" id="sheet" aria-live="polite" hidden>
+    <div class="sheet-head">
+      <div style="min-width:0">
+        <h2 id="s-title"></h2>
+        <div class="path" id="s-path"></div>
+      </div>
+      <button class="close" id="s-close" type="button" aria-label="Clear selection">&times;</button>
+    </div>
+    <p class="count-line" id="s-count"></p>
+    <div class="sheet-actions">
+      <button class="btn primary" id="s-toggle" type="button">Open branch</button>
+      <button class="btn" id="s-deep" type="button">Open everything below</button>
+    </div>
+    <div class="children" id="s-children"></div>
+  </section>
+</main>
+
+<footer class="bottombar" id="bottombar">
+  <div class="tool-row">
+    <button class="btn" id="zout" type="button" aria-label="Zoom out">&minus;</button>
+    <button class="btn" id="zin" type="button" aria-label="Zoom in">+</button>
+    <button class="btn" id="fit" type="button">Fit</button>
+    <button class="btn" id="open-all" type="button">Open all</button>
+    <button class="btn" id="close-all" type="button">Close all</button>
+    <button class="btn primary" id="expand-mode" type="button">Expand</button>
+    <button class="icon-btn" id="hide-bottom" type="button" aria-label="Hide bottom bar">&#9660;</button>
+  </div>
+</footer>
+
+<section class="admin-panel" id="admin-panel" aria-labelledby="admin-heading" hidden>
+  <div class="admin-card">
+    <div class="admin-head">
+      <h2 id="admin-heading">Upload mind maps</h2>
+      <button class="icon-btn" id="admin-close" type="button" aria-label="Close upload">&times;</button>
+    </div>
+    <p class="admin-note">Admins only. Uses a GitHub token that can write to this repository (Contents: Read and write). The token stays in this browser only.</p>
+    <form id="admin-token-form" class="admin-stack">
+      <label for="admin-token">GitHub token</label>
+      <div class="admin-row">
+        <input id="admin-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+        <button class="btn primary" type="submit">Check</button>
+      </div>
+      <button class="btn" id="admin-forget" type="button">Remove token from this browser</button>
+    </form>
+    <form id="admin-form" class="admin-stack" hidden>
+      <label for="admin-title">Title (shown in the menu)</label>
+      <input id="admin-title" required maxlength="80" placeholder="Photosynthesis">
+      <label for="admin-category">Category (the menu branch)</label>
+      <input id="admin-category" maxlength="60" placeholder="Biology">
+      <label for="admin-file">Mermaid file (.mmd, .md or .txt)</label>
+      <input id="admin-file" type="file" accept=".mmd,.mermaid,.md,.txt,text/plain">
+      <label for="admin-text">…or paste the Mermaid code</label>
+      <textarea id="admin-text" spellcheck="false" placeholder="mindmap&#10;  root((Topic))"></textarea>
+      <button class="btn primary" type="submit">Upload to the menu</button>
+    </form>
+    <p class="admin-status" id="admin-status" role="status"></p>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), world = $('#world'), nodesEl = $('#nodes'), linksEl = $('#links'), sheet = $('#sheet');
+  const topbar = $('#topbar'), bottombar = $('#bottombar');
+  const COL_W = 252, GAP = 18, PAD = 24, MIN_H = 46, STORE = 'mindmap-viewer-last';
+  const SAMPLE = `mindmap
+  root((Cell biology))
+    Organelles
+      Nucleus
+        DNA
+        Nucleolus
+      Mitochondria
+        ATP
+        Krebs cycle
+      Ribosomes
+    Transport
+      Diffusion
+      Osmosis
+      Active transport
+    Cell division
+      Mitosis
+        Prophase
+        Metaphase
+        Anaphase
+        Telophase
+      Meiosis`;
+
+  let root = null, byId = new Map(), selected = null, nodeSeq = 0, view = { x: 0, y: 0, s: 1 };
+  let inMenu = true, topHidden = false, bottomHidden = false, expanded = false, lastEmptyTap = 0;
+
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const kids = n => n.collapsed ? [] : n.children;
+  const clean = s => { s = s.trim(); return /^".*"$/s.test(s) ? s.slice(1, -1) : s; };
+  const toLabel = s => clean(String(s).replace(/<br\s*\/?>/gi, '\n'));
+
+  // ---------- Reading Mermaid ----------
+  // Accepts "mindmap", "flowchart" and "graph". Anything before the diagram (such as a ```mermaid fence or notes) is ignored,
+  // and reading stops at the closing fence.
+  const HEAD = /^\s*(mindmap|flowchart\b|graph\b)/i;
+  function diagramLines(text) {
+    const all = text.replace(/\r/g, '').replace(/\t/g, '    ').split('\n');
+    const start = all.findIndex(l => HEAD.test(l));
+    if (start < 0) throw new Error('No Mermaid diagram found. It should start with "mindmap", "flowchart" or "graph".');
+    const out = [];
+    for (const l of all.slice(start)) {
+      if (/^\s*```/.test(l)) { if (out.length) break; else continue; }
+      out.push(l);
+    }
+    return out.filter(l => l.trim() && !/^\s*%%/.test(l));
+  }
+  function parseDiagram(text) {
+    const lines = diagramLines(text);
+    return /^\s*mindmap/i.test(lines[0]) ? parseMindmap(lines) : parseFlow(lines);
+  }
+
+  const SHAPES = [['((', '))'], ['{{', '}}'], ['(', ')'], ['[', ']']];
+  function mindLabel(body) {
+    const id = body.match(/^[A-Za-z0-9_-]*/)[0];   // an optional id before the shape
+    const rest = body.slice(id.length);
+    for (const [o, c] of SHAPES) {
+      if (rest.length >= o.length + c.length && rest.startsWith(o) && rest.endsWith(c)) return toLabel(rest.slice(o.length, rest.length - c.length));
+    }
+    return toLabel(body);
+  }
+  function parseMindmap(lines) {
+    let top = null; const stack = [];
+    for (const raw of lines.slice(1)) {
+      const indent = raw.match(/^ */)[0].length;
+      const body = raw.trim().replace(/::icon\([^)]*\)/g, '').replace(/:::[\w-]+/g, '').trim();
+      const label = mindLabel(body);
+      if (!label) continue;
+      const n = { label, children: [], parent: null, indent };
+      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+      const parent = stack[stack.length - 1] || top;
+      if (parent) { n.parent = parent; parent.children.push(n); } else top = n;
+      stack.push(n);
+    }
+    if (!top) throw new Error('The map has no nodes yet.');
+    top.collapseDepth = 2;
+    return top;
+  }
+
+  // Flowcharts: each arrow makes the target a child of the source (first parent wins, so the result is a tree).
+  // Colours from classDef / class / :::name are kept.
+  const NODE = /^([A-Za-z0-9_]+)\s*(?:\[\[(.*)\]\]|\[(.*)\]|\((.*)\)|\{(.*)\}|>(.*)\])?\s*$/;
+  const SAFE = /^[#\w(),.%\s-]+$/;
+  function parseStyle(s) {
+    const o = {};
+    s.split(',').forEach(p => { const i = p.indexOf(':'); if (i > 0) o[p.slice(0, i).trim()] = p.slice(i + 1).trim(); });
+    return o;
+  }
+  function cssFor(p) {
+    const out = [];
+    if (p.fill && SAFE.test(p.fill)) out.push(`background:${p.fill}`);
+    if (p.stroke && SAFE.test(p.stroke)) out.push(`border-color:${p.stroke}`);
+    if (p['stroke-width'] && /^[\d.]+px$/.test(p['stroke-width'])) out.push(`border-width:${p['stroke-width']}`);
+    if (p.color && SAFE.test(p.color)) out.push(`color:${p.color}`);
+    return out.join(';');
+  }
+  function parseFlow(lines) {
+    const nodes = new Map(), edges = [], classDefs = new Map(), assigned = new Map();
+    const addClass = (id, name) => { if (!assigned.has(id)) assigned.set(id, []); assigned.get(id).push(name); };
+    // bare = a line that is only a node: it counts only if it has a shape or is already known (so notes are ignored)
+    const ref = (raw, bare) => {
+      let s = raw.trim(), cls = null;
+      const m = s.match(/:::([\w-]+)$/);
+      if (m) { cls = m[1]; s = s.slice(0, m.index).trim(); }
+      const nm = s.match(NODE);
+      if (!nm) return null;
+      const id = nm[1];
+      const shape = nm[2] ?? nm[3] ?? nm[4] ?? nm[5] ?? nm[6];
+      if (bare && shape === undefined && !nodes.has(id)) return null;
+      if (!nodes.has(id)) nodes.set(id, { id, label: id, children: [], parent: null });
+      if (shape !== undefined) nodes.get(id).label = toLabel(shape);
+      if (cls) addClass(id, cls);
+      return id;
+    };
+    for (const raw of lines.slice(1)) {
+      const line = raw.trim();
+      if (/^(subgraph|end\b|direction\b|click\b|linkStyle\b|style\b)/.test(line)) continue;
+      let m;
+      if ((m = line.match(/^classDef\s+(\S+)\s+(.+)$/))) { classDefs.set(m[1], parseStyle(m[2])); continue; }
+      if ((m = line.match(/^class\s+(\S+)\s+(\S+)$/))) { m[1].split(',').forEach(id => addClass(id.trim(), m[2])); continue; }
+      const parts = line.split(/(-\.->|-\.-|==>|===|-->|---)(?:\|[^|]*\|)?/);
+      if (parts.length === 1) { ref(line, true); continue; }
+      let prev = ref(parts[0], false);
+      for (let i = 2; i < parts.length; i += 2) {
+        const cur = ref(parts[i], false);
+        if (prev && cur && prev !== cur) edges.push({ from: prev, to: cur });
+        prev = cur;
+      }
+    }
+    if (!nodes.size) throw new Error('The diagram has no nodes yet.');
+
+    // Build the tree
+    const isTarget = new Set(edges.map(e => e.to));
+    const rootIds = [...nodes.keys()].filter(id => !isTarget.has(id));
+    const top = nodes.get(rootIds[0] || [...nodes.keys()][0]);
+    const isAncestor = (a, b) => { for (let p = a; p; p = p.parent) if (p === b) return true; return false; };
+    for (const { from, to } of edges) {
+      const a = nodes.get(from), b = nodes.get(to);
+      if (b === top || b.parent || rootIds.includes(b.id) || isAncestor(a, b)) continue;
+      b.parent = a; a.children.push(b);
+    }
+    for (const n of nodes.values()) {
+      if (n !== top && !n.parent) { n.parent = top; top.children.push(n); }
+    }
+    // Apply colours from the classes each node has
+    for (const n of nodes.values()) {
+      const merged = Object.assign({}, ...(assigned.get(n.id) || []).map(c => classDefs.get(c) || {}));
+      n.style = cssFor(merged);
+    }
+    top.collapseDepth = 3;
+    return top;
+  }
+
+  function indexTree(n, depth = 0) {
+    byId.set(n.id, n); n.depth = depth;
+    // Deeper branches start closed so the map opens readable. Tap a node to open it.
+    n.collapsed = depth >= (root.collapseDepth || 2) && n.children.length > 0;
+    n.children.forEach(c => indexTree(c, depth + 1));
+  }
+
+  // ---------- Layout ----------
+  function measure(n) {
+    const lines = n.label.split('\n');
+    const chars = Math.max(...lines.map(l => l.length)), total = n.label.replace(/\n/g, '').length;
+    const textW = Math.min(chars, 30) * 7.4;
+    n.w = n.depth === 0 ? Math.min(280, Math.max(150, Math.round(textW + 48))) : Math.min(230, Math.max(104, Math.round(textW + 34)));
+    const per = Math.max(1, Math.floor((n.w - 28) / 7.4));
+    const wrapped = lines.reduce((s, l) => s + Math.max(1, Math.ceil(l.length / per)), 0);
+    n.h = Math.max(MIN_H, wrapped * 20 + 16);
+  }
+  function span(n) {
+    const sum = kids(n).reduce((s, c) => s + span(c), 0);
+    n.span = Math.max(sum, n.h + GAP);
+    return n.span;
+  }
+  function place(n, depth, top) {
+    n.left = depth * COL_W;
+    const k = kids(n), sum = k.reduce((s, c) => s + c.span, 0);
+    let t = top + (n.span - sum) / 2;
+    k.forEach(c => { place(c, depth + 1, t); t += c.span; });
+    n.cy = top + n.span / 2;
+    n.top = n.cy - n.h / 2;
+  }
+  function visibleNodes() {
+    const out = [];
+    (function walk(n) { out.push(n); kids(n).forEach(walk); })(root);
+    return out;
+  }
+
+  // ---------- Drawing ----------
+  function render() {
+    const list = visibleNodes();
+    list.forEach(measure);
+    span(root); place(root, 0, 0);
+    const maxDepth = Math.max(...list.map(n => n.depth));
+    const W = PAD * 2 + maxDepth * COL_W + Math.max(...list.filter(n => n.depth === maxDepth).map(n => n.w)) + 40;
+    const H = root.span + PAD * 2;
+    world.style.width = W + 'px'; world.style.height = H + 'px';
+    linksEl.setAttribute('width', W); linksEl.setAttribute('height', H);
+    linksEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    let paths = '';
+    list.forEach(n => kids(n).forEach(c => {
+      const x1 = PAD + n.left + n.w, y1 = PAD + n.cy, x2 = PAD + c.left, y2 = PAD + c.cy, mx = (x1 + x2) / 2;
+      paths += `<path class="link${n.depth === 0 ? ' root-link' : ''}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+    }));
+    linksEl.innerHTML = paths;
+    nodesEl.innerHTML = list.map(n => {
+      const cls = ['node', n.depth === 0 ? 'is-root' : n.depth === 1 ? 'is-branch' : '', n.id === selected ? 'is-selected' : ''].join(' ');
+      const badge = n.collapsed && n.children.length ? `<span class="count" aria-hidden="true">+${n.children.length}</span>` : '';
+      const expandedAttr = n.children.length ? ` aria-expanded="${!n.collapsed}"` : '';
+      const extra = n.style ? ';' + n.style : '';
+      return `<div class="${cls.trim()}" role="button" tabindex="0" data-id="${n.id}"${expandedAttr} aria-label="${esc(n.label.replace(/\n/g, ' '))}"` +
+        ` style="left:${PAD + n.left}px;top:${PAD + n.top}px;width:${n.w}px;height:${n.h}px${extra}"><span>${esc(n.label)}</span>${badge}</div>`;
+    }).join('');
+    applyView(false);
+  }
+  function applyView(animate) {
+    world.classList.toggle('animated', !!animate);
+    world.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.s})`;
+  }
+  function usableHeight() { return stage.clientHeight - (sheet.hidden ? 0 : sheet.offsetHeight); }
+  function fit() {
+    const W = parseFloat(world.style.width), H = parseFloat(world.style.height);
+    const sw = stage.clientWidth, sh = usableHeight();
+    view.s = Math.min(1.1, sw / W, sh / H);
+    view.x = (sw - W * view.s) / 2; view.y = (sh - H * view.s) / 2;
+    applyView(true);
+  }
+  // Brings a node to the middle of the free space, keeping the zoom.
+  function focusNode(n) {
+    const sw = stage.clientWidth, sh = usableHeight();
+    const cx = PAD + n.left + n.w / 2, cy = PAD + n.cy;
+    if (view.s < 0.8) view.s = 0.9;
+    view.x = sw / 2 - cx * view.s; view.y = sh / 2 - cy * view.s;
+    applyView(true);
+  }
+  function zoomAt(clientX, clientY, k) {
+    const r = stage.getBoundingClientRect(), mx = clientX - r.left, my = clientY - r.top;
+    const s = Math.min(2.6, Math.max(0.3, view.s * k));
+    const wx = (mx - view.x) / view.s, wy = (my - view.y) / view.s;
+    view.s = s; view.x = mx - wx * s; view.y = my - wy * s;
+    applyView(false);
+  }
+  function zoomCenter(k) { const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + usableHeight() / 2, k); }
+
+  // ---------- Bars and Expand ----------
+  function applyChrome() {
+    topbar.hidden = expanded || topHidden;
+    bottombar.hidden = expanded || bottomHidden;
+    $('#show-top').hidden = expanded || !topHidden;
+    $('#show-bottom').hidden = expanded || !bottomHidden;
+    $('#hint').hidden = expanded;
+    $('#menu-btn').hidden = inMenu || expanded;
+    if (expanded) sheet.hidden = true;
+    stage.classList.toggle('expanded', expanded);
+    if (root) fit();
+  }
+  function setExpanded(on) { expanded = on; applyChrome(); }
+
+  // ---------- Selection and opening ----------
+  function ancestors(n) { const out = []; for (let p = n.parent; p; p = p.parent) out.unshift(p.label.replace(/\n/g, ' ')); return out; }
+  function tapNode(id) {
+    const n = byId.get(id);
+    if (!n) return;
+    if (n.url) { openMap(n); return; }
+    if (selected === id) {
+      if (n.children.length) n.collapsed = !n.collapsed;   // a second tap opens or closes the branch
+    } else {
+      selected = id;
+      if (n.collapsed && n.children.length) n.collapsed = false;   // a first tap opens it
+    }
+    render(); showSheet();
+    focusNode(n);
+  }
+  function clearSelection() {
+    if (selected === null) return;
+    selected = null; render(); showSheet();
+  }
+  function emptyTap() {
+    const now = performance.now();
+    if (expanded && now - lastEmptyTap < 400) { lastEmptyTap = 0; setExpanded(false); return; }   // double tap leaves Expand
+    lastEmptyTap = now;
+    clearSelection();
+  }
+  function showSheet() {
+    const n = byId.get(selected);
+    sheet.hidden = !n || expanded;
+    if (!n) { if (root) fit(); return; }
+    $('#s-title').textContent = n.label;
+    const path = ancestors(n);
+    $('#s-path').textContent = path.length ? path.join(' › ') : 'Centre of the map';
+    const k = n.children.length;
+    $('#s-count').textContent = k ? `${k} ${k === 1 ? 'branch' : 'branches'} under this` : 'Nothing under this yet';
+    const t = $('#s-toggle');
+    t.hidden = !k; t.textContent = n.collapsed ? 'Open branch' : 'Close branch';
+    $('#s-deep').hidden = !k;
+    $('#s-children').innerHTML = kids(n).map(c =>
+      `<button class="child" type="button" data-id="${c.id}">${esc(c.label.replace(/\n/g, ' '))}${c.children.length ? `<span>${c.collapsed ? '+' + c.children.length : '▾'}</span>` : ''}</button>`
+    ).join('');
+  }
+  function openEverything(n) {
+    (function walk(x) { x.collapsed = false; x.children.forEach(walk); })(n);
+    render(); showSheet(); focusNode(n);
+  }
+
+  // ---------- Loading ----------
+  function load(text, name) {
+    try {
+      const top = parseDiagram(text);
+      byId = new Map(); nodeSeq = 0;
+      (function renumber(n) { n.id = ++nodeSeq; n.children.forEach(renumber); })(top);
+      root = top; indexTree(root);
+      selected = null; sheet.hidden = true;
+      $('#title').textContent = name || 'Mind map';
+      $('#meta').textContent = `${byId.size} ${byId.size === 1 ? 'node' : 'nodes'} · tap a node to open it`;
+      render(); applyChrome();
+      try { localStorage.setItem(STORE, JSON.stringify({ name, text })); } catch (_) {}
+      toast(`Showing ${name || 'the map'}`);
+      return true;
+    } catch (err) {
+      toast(err.message || 'The diagram could not be read.', true);
+      return false;
+    }
+  }
+  function toast(msg, isError) {
+    const t = $('#toast');
+    t.textContent = msg; t.className = 'toast show' + (isError ? ' error' : '');
+    clearTimeout(toast.t); toast.t = setTimeout(() => { t.className = 'toast'; }, isError ? 4200 : 2200);
+  }
+  function fileName(name) { return name.replace(/\.[^.]+$/, '') || 'Mind map'; }
+  async function readFile(file) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast('That file is larger than 2 MB.', true); return; }
+    load(await file.text(), fileName(file.name));
+  }
+
+  // ---------- Pointer input: tap, drag, pinch, wheel ----------
+  const pointers = new Map(); let press = null, lastDist = 0;
+  stage.addEventListener('pointerdown', e => {
+    if (e.target.closest('.sheet,.edge-tab')) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pointers.size === 1) {
+      press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), node: e.target.closest('.node'), moved: false, origin: { ...view } };
+    } else {
+      press = null;
+      const [a, b] = [...pointers.values()];
+      lastDist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    }
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / lastDist);
+      lastDist = d;
+      return;
+    }
+    if (press && press.id === e.pointerId) {
+      const dx = e.clientX - press.x, dy = e.clientY - press.y;
+      if (!press.moved && Math.hypot(dx, dy) > 8) { press.moved = true; stage.classList.add('dragging'); }
+      if (press.moved) {
+        view.x = press.origin.x + dx; view.y = press.origin.y + dy;
+        applyView(false);
+      }
+    }
+  });
+  function release(e) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    if (press && press.id === e.pointerId) {
+      if (!press.moved && performance.now() - press.t < 700) {
+        if (press.node) tapNode(Number(press.node.dataset.id));
+        else emptyTap();
+      }
+      press = null;
+    }
+    stage.classList.remove('dragging');
+    if (pointers.size === 1) {   // a pinch ended with one finger still down: carry on panning from here
+      const [p] = [...pointers.values()];
+      press = { id: [...pointers.keys()][0], x: p.x, y: p.y, t: performance.now(), node: null, moved: true, origin: { ...view } };
+    }
+  }
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+  stage.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+  stage.addEventListener('keydown', e => {
+    const node = e.target.closest?.('.node');
+    if (node && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tapNode(Number(node.dataset.id)); }
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && expanded) setExpanded(false); });
+
+  // ---------- Buttons ----------
+  $('#zin').onclick = () => zoomCenter(1.25);
+  $('#zout').onclick = () => zoomCenter(0.8);
+  $('#fit').onclick = () => { if (root) fit(); };
+  $('#open-all').onclick = () => { if (!root) return; (function walk(x) { x.collapsed = false; x.children.forEach(walk); })(root); render(); showSheet(); fit(); };
+  $('#close-all').onclick = () => {
+    if (!root) return;
+    (function walk(x) { x.collapsed = x !== root && x.children.length > 0; x.children.forEach(walk); })(root);
+    if (selected !== null && !visibleNodes().some(x => x.id === selected)) selected = null;
+    render(); showSheet(); fit();
+  };
+  $('#expand-mode').onclick = () => setExpanded(true);
+  $('#hide-top').onclick = () => { topHidden = true; applyChrome(); };
+  $('#show-top').onclick = () => { topHidden = false; applyChrome(); };
+  $('#hide-bottom').onclick = () => { bottomHidden = true; applyChrome(); };
+  $('#show-bottom').onclick = () => { bottomHidden = false; applyChrome(); };
+  $('#s-close').onclick = clearSelection;
+  $('#s-toggle').onclick = () => { const n = byId.get(selected); if (!n) return; n.collapsed = !n.collapsed; render(); showSheet(); focusNode(n); };
+  $('#s-deep').onclick = () => { const n = byId.get(selected); if (n) openEverything(n); };
+  $('#s-children').addEventListener('click', e => {
+    const b = e.target.closest('.child'); if (b) tapNode(Number(b.dataset.id));
+  });
+  $('#menu-btn').onclick = showMenu;
+
+  // ---------- Menu of maps (the menu is itself a mind map) ----------
+  function setTree(top) {
+    byId = new Map(); nodeSeq = 0;
+    (function renumber(n) { n.id = ++nodeSeq; n.children.forEach(renumber); })(top);
+    root = top; indexTree(root);
+    selected = null; sheet.hidden = true;
+  }
+  async function showMenu() {
+    let maps;
+    try {
+      const r = await fetch('maps/index.json?v=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('index not found');
+      maps = await r.json();
+    } catch (_) { toast('Could not load the list of maps.', true); return; }
+    const cats = new Map();
+    for (const m of maps) { const c = m.category || 'Other'; if (!cats.has(c)) cats.set(c, []); cats.get(c).push(m); }
+    const top = { label: 'Mind maps', children: [], parent: null, indent: 0, collapseDepth: 2 };
+    for (const [c, list] of cats) {
+      const cat = { label: c, children: [], parent: top, indent: 1 };
+      for (const m of list) cat.children.push({ label: m.title, children: [], parent: cat, indent: 2, url: m.file });
+      top.children.push(cat);
+    }
+    inMenu = true;
+    setTree(top);
+    $('#title').textContent = 'Mind maps';
+    $('#meta').textContent = `${maps.length} ${maps.length === 1 ? 'map' : 'maps'} · tap a map to open it`;
+    render(); applyChrome();
+  }
+  async function openMap(n) {
+    try {
+      const r = await fetch('maps/' + n.url, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`Could not open ${n.label}.`);
+      const text = await r.text();
+      inMenu = false;
+      load(text, n.label);
+    } catch (err) { toast(err.message || 'That map could not be opened.', true); }
+  }
+
+  // ---------- Admin: upload maps to the repository (hidden; open this page with #admin) ----------
+  // The repository is read from the web address: https://OWNER.github.io/REPO/
+  const ADMIN_KEY = 'mindmap-admin-token';
+  const repo = { owner: location.hostname.split('.')[0], name: location.pathname.replace(/\/index\.html$/, '/').split('/').filter(Boolean)[0] || 'mindmaps' };
+  function getToken() { try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (_) { return ''; } }
+  function setToken(t) { try { if (t) localStorage.setItem(ADMIN_KEY, t); else localStorage.removeItem(ADMIN_KEY); } catch (_) {} }
+  function gh(path, opts = {}) {
+    const url = `https://api.github.com/repos/${repo.owner}/${repo.name}${path ? '/' + path : ''}`;
+    return fetch(url, { ...opts, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: `Bearer ${getToken()}`, ...(opts.headers || {}) } });
+  }
+  const b64 = s => { const bytes = new TextEncoder().encode(s); let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); }); return btoa(bin); };
+  const slugOf = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'map';
+  function adminStatus(msg, isError) { const el = $('#admin-status'); el.textContent = msg; el.className = 'admin-status' + (isError ? ' error' : ''); }
+  async function checkToken() {
+    adminStatus('Checking the token…');
+    try {
+      const r = await gh('');
+      if (!r.ok) throw new Error(r.status === 404 ? `Repository ${repo.owner}/${repo.name} was not found for this token.` : 'GitHub did not accept this token.');
+      const j = await r.json();
+      if (!j.permissions || !j.permissions.push) throw new Error('This token cannot write to the repository. Give it Contents: Read and write.');
+      $('#admin-form').hidden = false;
+      adminStatus(`Signed in to ${repo.owner}/${repo.name}.`);
+    } catch (err) {
+      $('#admin-form').hidden = true;
+      adminStatus(err.message || 'Could not check the token.', true);
+    }
+  }
+  function showAdmin() {
+    $('#admin-panel').hidden = false;
+    if (getToken()) checkToken();
+    else { $('#admin-form').hidden = true; adminStatus('Paste a GitHub token to begin.'); }
+  }
+  async function uploadMap(e) {
+    e.preventDefault();
+    const title = $('#admin-title').value.trim();
+    const category = $('#admin-category').value.trim() || 'Other';
+    let body = $('#admin-text').value;
+    const file = $('#admin-file').files[0];
+    if (!body.trim() && file) body = await file.text();
+    if (!title) { adminStatus('Give the map a title.', true); return; }
+    body = body.replace(/\r/g, '').replace(/^```\w*\s*$/gm, '').replace(/^\s*%%\s*(title|category):.*\n?/gim, '').trim();
+    const firstLine = body.split('\n').find(l => l.trim() && !/^\s*%%/.test(l)) || '';
+    if (!HEAD.test(firstLine)) { adminStatus('The map should start with mindmap, flowchart or graph.', true); return; }
+    const path = 'maps/' + slugOf(title) + '.mmd';
+    const content = `%% title: ${title}\n%% category: ${category}\n${body}\n`;
+    adminStatus('Saving…');
+    try {
+      let sha = null;
+      const existing = await gh('contents/' + path);
+      if (existing.ok) sha = (await existing.json()).sha;   // a map with the same name is replaced
+      const r = await gh('contents/' + path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `${sha ? 'Update' : 'Add'} mind map: ${title}`, content: b64(content), ...(sha ? { sha } : {}) })
+      });
+      if (!r.ok) throw new Error(`GitHub said ${r.status}. Check the token and try again.`);
+      adminStatus(`${sha ? 'Updated' : 'Added'} "${title}". It appears in the menu in about a minute.`);
+      $('#admin-form').reset();
+    } catch (err) { adminStatus(err.message || 'Could not save the map.', true); }
+  }
+  $('#admin-token-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const t = $('#admin-token').value.trim();
+    if (!t) { adminStatus('Paste the token first.', true); return; }
+    setToken(t); $('#admin-token').value = ''; await checkToken();
+  });
+  $('#admin-forget').onclick = () => { setToken(''); $('#admin-form').hidden = true; adminStatus('Token removed from this browser.'); };
+  $('#admin-form').addEventListener('submit', uploadMap);
+  $('#admin-close').onclick = () => { $('#admin-panel').hidden = true; history.replaceState(null, '', location.pathname + location.search); };
+  window.addEventListener('hashchange', () => { if (location.hash === '#admin') showAdmin(); });
+
+  // ---------- Start ----------
+  showMenu();
+  if (location.hash === '#admin') showAdmin();
+  window.addEventListener('resize', () => { if (root) fit(); });
+})();
+</script>
+</body>
+</html>
+
+</body></html>
