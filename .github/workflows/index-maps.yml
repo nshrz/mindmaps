@@ -1,0 +1,29 @@
+name: Update map index
+
+on:
+  push:
+    paths:
+      - "maps/*.mmd"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild maps/index.json
+        run: python3 scripts/build_index.py
+
+      - name: Commit the updated index
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add maps/index.json
+          if ! git diff --staged --quiet; then
+            git commit -m "Update map index"
+            git push
+          fi
